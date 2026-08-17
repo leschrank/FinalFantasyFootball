@@ -286,6 +286,7 @@
 
   .direction-toggle {
     display: flex;
+    flex-wrap: wrap;
     border: 1px solid var(--line);
     border-radius: 5px;
     overflow: hidden;
@@ -340,6 +341,12 @@
     display: grid;
     grid-template-columns: 1fr 84px;
     gap: 8px 10px;
+  }
+  .score-grid.score-grid-dual {
+    grid-template-columns: 1fr 70px 110px;
+  }
+  .score-grid.score-grid-time-or-partial {
+    grid-template-columns: 1fr 110px 90px;
   }
 
   .score-grid label {
@@ -552,6 +559,8 @@
         <div class="direction-toggle" id="scoreDirToggle">
           <button data-sdir="high" id="sdirHigh" class="active">High Score Wins</button>
           <button data-sdir="low" id="sdirLow">Low Score Wins</button>
+          <button data-sdir="accuracy_time" id="sdirAccTime">Most Correct Wins</button>
+          <button data-sdir="time_or_partial" id="sdirTimeOrPartial">Time or Partial Credit</button>
         </div>
       </div>
       <div class="hint" id="unitHint"></div>
@@ -644,11 +653,11 @@
     { name: 'Paper Airplane Distance Throw', direction: 'high', hint: 'Distance thrown (e.g. feet) — farthest wins.' },
     { name: 'Cookie Face Challenge', direction: 'low', hint: 'Time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
     { name: 'Mario Kart Fastest Lap', direction: 'low', hint: 'Lap time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
-    { name: '5th Grade Math Worksheet Race', direction: 'low', hint: 'Completion time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: '5th Grade Math Worksheet Race', direction: 'accuracy_time', hint: 'Enter number of correct answers and completion time — most correct wins, time breaks ties.' },
     { name: 'Longest Continuous Paper Tear', direction: 'high', hint: 'Strip length (e.g. inches) — longest wins.' },
-    { name: 'NYT Crossword Race', direction: 'low', hint: 'Completion time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: 'NYT Crossword Race', direction: 'time_or_partial', hint: '10-minute cap. If a team finishes, enter their time — fastest wins. If they don\'t finish, leave time blank and enter squares correct out of 81 instead — finishers always outrank non-finishers, and among non-finishers most squares correct wins.' },
     { name: 'Sour Candy Contest', direction: 'high', hint: 'Time held out before a sour face — longest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
-    { name: 'Geography Test Race', direction: 'low', hint: 'Completion time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: 'Geography Test Race', direction: 'accuracy_time', hint: 'Enter number of correct answers and completion time — most correct wins, time breaks ties.' },
     { name: 'Disc Golf Closest to the Hole', direction: 'low', hint: 'Distance from the hole (e.g. feet) — closest wins.' }
   ];
 
@@ -706,6 +715,32 @@
 
   // ---------- Standings math ----------
 
+  // Compares two team scores for a given challenge direction. Negative means
+  // `a` ranks ahead of `b`. 'accuracy_time' scores are {correct, time} objects
+  // — most correct wins, completion time breaks ties.
+  function compareScores(direction, a, b) {
+    if (direction === 'accuracy_time') {
+      if (b.correct !== a.correct) return b.correct - a.correct;
+      return a.time - b.time;
+    }
+    if (direction === 'time_or_partial') {
+      if (a.finished !== b.finished) return a.finished ? -1 : 1;
+      return a.finished ? (a.time - b.time) : (b.squares - a.squares);
+    }
+    return direction === 'low' ? a - b : b - a;
+  }
+
+  function scoresEqual(direction, a, b) {
+    if (direction === 'accuracy_time') {
+      return a.correct === b.correct && a.time === b.time;
+    }
+    if (direction === 'time_or_partial') {
+      if (a.finished !== b.finished) return false;
+      return a.finished ? a.time === b.time : a.squares === b.squares;
+    }
+    return a === b;
+  }
+
   function computeStandings(challenges) {
     var totals = {};
     state.teams.forEach(function (t) { totals[t.id] = 0; });
@@ -715,12 +750,12 @@
         return { id: t.id, score: ch.scores[t.id] };
       });
       entries.sort(function (a, b) {
-        return ch.direction === 'low' ? a.score - b.score : b.score - a.score;
+        return compareScores(ch.direction, a.score, b.score);
       });
       var n = entries.length;
       var rank = 1;
       for (var i = 0; i < n; i++) {
-        if (i > 0 && entries[i].score === entries[i - 1].score) {
+        if (i > 0 && scoresEqual(ch.direction, entries[i].score, entries[i - 1].score)) {
           // tie: same rank as previous
         } else {
           rank = i + 1;
@@ -864,16 +899,51 @@
   function renderScoreGrid() {
     var grid = document.getElementById('scoreGrid');
     grid.innerHTML = '';
+    var isAccTime = scoreDirection === 'accuracy_time';
+    var isTimeOrPartial = scoreDirection === 'time_or_partial';
+    grid.classList.toggle('score-grid-dual', isAccTime);
+    grid.classList.toggle('score-grid-time-or-partial', isTimeOrPartial);
     state.teams.forEach(function (t) {
       var label = el('label', { text: t.name, 'data-for': t.id });
-      var input = el('input', {
-        type: 'text',
-        inputmode: 'decimal',
-        placeholder: 'e.g. 12.4 or 1:23.4',
-        'data-team-id': t.id
-      });
       grid.appendChild(label);
-      grid.appendChild(input);
+      if (isAccTime) {
+        grid.appendChild(el('input', {
+          type: 'text',
+          inputmode: 'numeric',
+          placeholder: 'Correct',
+          'data-team-id': t.id,
+          'data-field': 'correct'
+        }));
+        grid.appendChild(el('input', {
+          type: 'text',
+          inputmode: 'decimal',
+          placeholder: 'Time: 12.4 or 1:23.4',
+          'data-team-id': t.id,
+          'data-field': 'time'
+        }));
+      } else if (isTimeOrPartial) {
+        grid.appendChild(el('input', {
+          type: 'text',
+          inputmode: 'decimal',
+          placeholder: 'Time if finished',
+          'data-team-id': t.id,
+          'data-field': 'time'
+        }));
+        grid.appendChild(el('input', {
+          type: 'text',
+          inputmode: 'numeric',
+          placeholder: 'Squares if DNF',
+          'data-team-id': t.id,
+          'data-field': 'squares'
+        }));
+      } else {
+        grid.appendChild(el('input', {
+          type: 'text',
+          inputmode: 'decimal',
+          placeholder: 'e.g. 12.4 or 1:23.4',
+          'data-team-id': t.id
+        }));
+      }
     });
   }
 
@@ -892,11 +962,11 @@
       return { id: t.id, name: t.name, score: ch.scores[t.id] };
     });
     entries.sort(function (a, b) {
-      return ch.direction === 'low' ? a.score - b.score : b.score - a.score;
+      return compareScores(ch.direction, a.score, b.score);
     });
     var n = entries.length, rank = 1;
     entries.forEach(function (e, i) {
-      if (i > 0 && e.score === entries[i - 1].score) {
+      if (i > 0 && scoresEqual(ch.direction, e.score, entries[i - 1].score)) {
         // keep rank
       } else {
         rank = i + 1;
@@ -904,6 +974,22 @@
       e.points = n - rank + 1;
     });
     return entries;
+  }
+
+  function formatScoreForDisplay(direction, score) {
+    if (direction === 'accuracy_time') {
+      return score.correct + ' correct, ' + score.time + 's';
+    }
+    if (direction === 'time_or_partial') {
+      return score.finished ? (score.time + 's (finished)') : (score.squares + '/81 squares (DNF)');
+    }
+    return String(score);
+  }
+
+  function directionLabel(direction) {
+    if (direction === 'accuracy_time') return 'Most correct wins, time breaks ties';
+    if (direction === 'time_or_partial') return 'Fastest finish wins; DNF ranked by squares correct';
+    return direction === 'low' ? 'Low score wins' : 'High score wins';
   }
 
   function escapeHtml(s) {
@@ -933,7 +1019,7 @@
       var summary = el('div', { class: 'log-summary' }, [
         el('div', {}, [
           el('div', { class: 'log-title', text: ch.name }),
-          el('div', { class: 'log-meta', text: (ch.direction === 'low' ? 'Low score wins' : 'High score wins') })
+          el('div', { class: 'log-meta', text: directionLabel(ch.direction) })
         ]),
         el(tag_span(), { class: 'hint', text: isOpen ? 'Hide' : 'Details' })
       ]);
@@ -952,7 +1038,7 @@
         var tbody = document.createElement('tbody');
         challengeStandings.forEach(function (r) {
           var tr = document.createElement('tr');
-          tr.innerHTML = '<td>' + escapeHtml(r.name) + '</td><td class="num">' + r.score + '</td><td class="num">' + r.points + '</td>';
+          tr.innerHTML = '<td>' + escapeHtml(r.name) + '</td><td class="num">' + escapeHtml(formatScoreForDisplay(ch.direction, r.score)) + '</td><td class="num">' + r.points + '</td>';
           tbody.appendChild(tr);
         });
         table.appendChild(tbody);
@@ -1121,22 +1207,20 @@
   });
 
   var scoreDirection = 'high';
-  document.getElementById('sdirHigh').addEventListener('click', function () {
-    scoreDirection = 'high';
-    document.getElementById('sdirHigh').classList.add('active');
-    document.getElementById('sdirLow').classList.remove('active');
-  });
-  document.getElementById('sdirLow').addEventListener('click', function () {
-    scoreDirection = 'low';
-    document.getElementById('sdirLow').classList.add('active');
-    document.getElementById('sdirHigh').classList.remove('active');
-  });
 
   function setDirectionButtons(dir) {
     scoreDirection = dir;
     document.getElementById('sdirHigh').classList.toggle('active', dir === 'high');
     document.getElementById('sdirLow').classList.toggle('active', dir === 'low');
+    document.getElementById('sdirAccTime').classList.toggle('active', dir === 'accuracy_time');
+    document.getElementById('sdirTimeOrPartial').classList.toggle('active', dir === 'time_or_partial');
+    renderScoreGrid();
   }
+
+  document.getElementById('sdirHigh').addEventListener('click', function () { setDirectionButtons('high'); });
+  document.getElementById('sdirLow').addEventListener('click', function () { setDirectionButtons('low'); });
+  document.getElementById('sdirAccTime').addEventListener('click', function () { setDirectionButtons('accuracy_time'); });
+  document.getElementById('sdirTimeOrPartial').addEventListener('click', function () { setDirectionButtons('time_or_partial'); });
 
   document.getElementById('templateSelect').addEventListener('change', function (e) {
     var val = e.target.value;
@@ -1169,16 +1253,50 @@
     var scores = {};
     var missing = false;
     var invalid = false;
-    document.querySelectorAll('#scoreGrid input').forEach(function (inp) {
-      var v = inp.value.trim();
-      if (v === '') { missing = true; return; }
-      var parsed = parseScoreValue(v);
-      if (isNaN(parsed)) { invalid = true; return; }
-      scores[inp.getAttribute('data-team-id')] = parsed;
-    });
+
+    if (scoreDirection === 'accuracy_time') {
+      state.teams.forEach(function (t) {
+        var correctInp = document.querySelector('#scoreGrid input[data-team-id="' + t.id + '"][data-field="correct"]');
+        var timeInp = document.querySelector('#scoreGrid input[data-team-id="' + t.id + '"][data-field="time"]');
+        var correctV = correctInp.value.trim();
+        var timeV = timeInp.value.trim();
+        if (correctV === '' || timeV === '') { missing = true; return; }
+        var correctNum = parseFloat(correctV);
+        var timeNum = parseScoreValue(timeV);
+        if (isNaN(correctNum) || isNaN(timeNum)) { invalid = true; return; }
+        scores[t.id] = { correct: correctNum, time: timeNum };
+      });
+    } else if (scoreDirection === 'time_or_partial') {
+      state.teams.forEach(function (t) {
+        var timeInp = document.querySelector('#scoreGrid input[data-team-id="' + t.id + '"][data-field="time"]');
+        var squaresInp = document.querySelector('#scoreGrid input[data-team-id="' + t.id + '"][data-field="squares"]');
+        var timeV = timeInp.value.trim();
+        var squaresV = squaresInp.value.trim();
+        if ((timeV === '' && squaresV === '') || (timeV !== '' && squaresV !== '')) { missing = true; return; }
+        if (timeV !== '') {
+          var timeNum = parseScoreValue(timeV);
+          if (isNaN(timeNum)) { invalid = true; return; }
+          scores[t.id] = { finished: true, time: timeNum };
+        } else {
+          var squaresNum = parseFloat(squaresV);
+          if (isNaN(squaresNum)) { invalid = true; return; }
+          scores[t.id] = { finished: false, squares: squaresNum };
+        }
+      });
+    } else {
+      document.querySelectorAll('#scoreGrid input').forEach(function (inp) {
+        var v = inp.value.trim();
+        if (v === '') { missing = true; return; }
+        var parsed = parseScoreValue(v);
+        if (isNaN(parsed)) { invalid = true; return; }
+        scores[inp.getAttribute('data-team-id')] = parsed;
+      });
+    }
 
     if (missing) {
-      hint.textContent = 'Enter a score for every team before adding.';
+      hint.textContent = scoreDirection === 'time_or_partial'
+        ? 'For every team, fill in exactly one: time (if finished) or squares correct (if not).'
+        : 'Enter a score for every team before adding.';
       hint.style.color = '#a13d2b';
       return;
     }
