@@ -25,18 +25,20 @@
 
 <style>
   :root {
-    --ink: #251a12;
-    --ink-soft: #6b5c46;
-    --paper: #efe6cf;
-    --panel: #f8f2e2;
-    --charcoal: #17140f;
-    --charcoal-deep: #0c0a07;
-    --tan: #b6863a;
-    --tan-soft: #d9b979;
-    --line: #ddd0aa;
-    --rust: #8a3323;
-    --good: #3f6b46;
-    --on-dark-soft: rgba(239, 230, 207, 0.62);
+    --ink: #0d1b2e;
+    --ink-soft: #55637d;
+    --paper: #ffffff;
+    --panel: #f2f5fb;
+    --charcoal: #050b16;
+    --charcoal-deep: #02050a;
+    --royal: #1d3fd6;
+    --royal-deep: #12266b;
+    --lime: #c6ff3d;
+    --lime-soft: #e6ffab;
+    --line: #dde4f2;
+    --rust: #e0453c;
+    --good: #2fae4e;
+    --on-dark-soft: rgba(255, 255, 255, 0.65);
   }
 
   * { box-sizing: border-box; }
@@ -75,7 +77,7 @@
   body:not(.view-mode) .view-only { display: none !important; }
 
   .mode-banner {
-    background: var(--tan);
+    background: var(--lime);
     color: var(--ink);
     font-size: 12.5px;
     font-weight: 600;
@@ -89,10 +91,10 @@
   /* ---------- Header ---------- */
 
   .masthead {
-    background: linear-gradient(180deg, var(--ink) 0%, var(--charcoal-deep) 100%);
+    background: linear-gradient(180deg, var(--royal) 0%, var(--charcoal-deep) 100%);
     color: var(--paper);
     padding: 28px clamp(16px, 4vw, 48px) 22px;
-    border-bottom: 4px solid var(--tan);
+    border-bottom: 4px solid var(--lime);
   }
 
   .masthead-row {
@@ -114,14 +116,14 @@
     padding: 2px 2px;
     min-width: 220px;
   }
-  .league-name-input:focus { outline: none; border-bottom-color: var(--tan); }
+  .league-name-input:focus { outline: none; border-bottom-color: var(--lime); }
   .league-name-input:hover { border-bottom-color: rgba(239,230,207,0.35); }
 
   .masthead-sub {
     font-size: 12.5px;
     letter-spacing: 0.12em;
     text-transform: uppercase;
-    color: var(--tan-soft);
+    color: var(--lime-soft);
     font-weight: 600;
   }
 
@@ -184,10 +186,10 @@
     justify-content: center;
     font-size: 19px;
     color: var(--paper);
-    background: var(--ink);
+    background: var(--royal);
     flex-shrink: 0;
   }
-  .rank-badge.gold { background: var(--tan); color: var(--ink); }
+  .rank-badge.gold { background: var(--lime); color: var(--ink); }
   .rank-badge.last { background: var(--rust); }
 
   .team-name-input {
@@ -201,7 +203,7 @@
     width: 100%;
   }
   .team-name-input:hover { border-bottom-color: var(--line); }
-  .team-name-input:focus { outline: none; border-bottom-color: var(--tan); }
+  .team-name-input:focus { outline: none; border-bottom-color: var(--lime); }
 
   .points-col { text-align: right; min-width: 74px; }
   .points-val { font-size: 19px; font-weight: 700; }
@@ -238,7 +240,7 @@
     border-bottom: 1px solid var(--line);
   }
   .pick-row:last-child { border-bottom: none; }
-  .pick-row.on-deck { background: rgba(182, 134, 58, 0.12); }
+  .pick-row.on-deck { background: rgba(198, 255, 61, 0.15); }
   .pick-row.waiting { color: var(--ink-soft); }
 
   .pick-who { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
@@ -257,7 +259,7 @@
     font-weight: 700;
     color: var(--ink);
   }
-  .slot-btn:hover { border-color: var(--tan); background: var(--tan); }
+  .slot-btn:hover { border-color: var(--lime); background: var(--lime); }
 
   .pick-locked-badge {
     display: inline-flex;
@@ -266,7 +268,7 @@
     min-width: 30px;
     height: 28px;
     border-radius: 6px;
-    background: var(--ink);
+    background: var(--royal);
     color: var(--paper);
     font-weight: 700;
     font-size: 13px;
@@ -300,7 +302,7 @@
     color: var(--ink-soft);
   }
   .direction-toggle button.active {
-    background: var(--ink);
+    background: var(--royal);
     color: var(--paper);
     font-weight: 600;
   }
@@ -313,7 +315,7 @@
     font-size: 11.5px;
     color: var(--ink-soft);
   }
-  .icon-btn:hover { border-color: var(--tan); color: var(--ink); }
+  .icon-btn:hover { border-color: var(--lime); color: var(--ink); }
 
   /* ---------- Challenge form ---------- */
 
@@ -335,7 +337,7 @@
     font-size: 16px;
     background: #fff;
   }
-  .challenge-name-input:focus { outline: none; border-color: var(--tan); }
+  .challenge-name-input:focus { outline: none; border-color: var(--lime); }
 
   .score-grid {
     display: grid;
@@ -364,11 +366,11 @@
     background: #fff;
     width: 100%;
   }
-  .score-grid input:focus { outline: none; border-color: var(--tan); }
+  .score-grid input:focus { outline: none; border-color: var(--lime); }
 
   .add-btn {
     align-self: flex-start;
-    background: var(--ink);
+    background: var(--royal);
     color: var(--paper);
     border: none;
     border-radius: 5px;
@@ -377,7 +379,7 @@
     font-weight: 600;
     letter-spacing: 0.02em;
   }
-  .add-btn:hover { background: var(--charcoal-deep); }
+  .add-btn:hover { background: var(--royal-deep); }
   .add-btn:disabled { background: var(--ink-soft); cursor: not-allowed; opacity: 0.6; }
 
   .hint {
@@ -388,7 +390,7 @@
   select.challenge-name-input {
     -webkit-appearance: none;
     appearance: none;
-    background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%236b5c46"/></svg>') no-repeat right 10px center;
+    background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%2355637d"/></svg>') no-repeat right 10px center;
   }
 
   /* ---------- Challenge log ---------- */
@@ -407,7 +409,7 @@
     cursor: pointer;
     user-select: none;
   }
-  .log-summary:hover { background: rgba(37,26,18,0.06); }
+  .log-summary:hover { background: rgba(29,63,214,0.06); }
 
   .log-title { font-weight: 600; font-size: 14px; }
   .log-meta { font-size: 11.5px; color: var(--ink-soft); letter-spacing: 0.02em; }
@@ -428,7 +430,7 @@
     padding: 4px 6px;
     border-bottom: 1px solid var(--line);
   }
-  .log-table td { padding: 4px 6px; border-bottom: 1px solid rgba(221,208,170,0.5); }
+  .log-table td { padding: 4px 6px; border-bottom: 1px solid rgba(221,228,242,0.5); }
   .log-table td.num, .log-table th.num { text-align: right; }
 
   .delete-challenge {
@@ -466,7 +468,7 @@
     display: none;
     position: fixed;
     inset: 0;
-    background: rgba(12, 10, 7, 0.72);
+    background: rgba(5, 11, 22, 0.72);
     z-index: 100;
     align-items: center;
     justify-content: center;
@@ -506,7 +508,7 @@
     color: var(--ink);
     resize: vertical;
   }
-  .modal-textarea:focus { outline: none; border-color: var(--tan); }
+  .modal-textarea:focus { outline: none; border-color: var(--lime); }
 </style>
 </head>
 <body>
@@ -1246,7 +1248,7 @@
 
     if (!name) {
       hint.textContent = 'Give this challenge a name.';
-      hint.style.color = '#a13d2b';
+      hint.style.color = 'var(--rust)';
       return;
     }
 
@@ -1297,12 +1299,12 @@
       hint.textContent = scoreDirection === 'time_or_partial'
         ? 'For every team, fill in exactly one: time (if finished) or squares correct (if not).'
         : 'Enter a score for every team before adding.';
-      hint.style.color = '#a13d2b';
+      hint.style.color = 'var(--rust)';
       return;
     }
     if (invalid) {
       hint.textContent = 'Scores should be a number (12.4) or a time (1:23.4).';
-      hint.style.color = '#a13d2b';
+      hint.style.color = 'var(--rust)';
       return;
     }
 
