@@ -1,0 +1,1189 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Draft Order — League Board</title>
+
+<!--
+  ============================================================================
+  SETUP (one-time, ~10 minutes) — see the chat instructions for full steps.
+  1. Create a free Firebase project at https://console.firebase.google.com
+  2. Add a Realtime Database (test mode is fine to start).
+  3. Project Settings → General → "Your apps" → add a Web app → copy the
+     firebaseConfig object it gives you, and paste it over FIREBASE_CONFIG below.
+  4. Pick a private passphrase and put it in EDIT_PASSPHRASE below.
+  5. In the Realtime Database "Rules" tab, paste the rule shown in the chat
+     instructions (it requires that same passphrase to write).
+  6. Upload this file (renamed to index.html) to a GitHub Pages site (or any
+     static host). Share the plain URL with your league to VIEW. Only you use
+     the URL with "?edit=YOUR_PASSPHRASE" on the end to make changes.
+  ============================================================================
+-->
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-database-compat.js"></script>
+
+<style>
+  :root {
+    --ink: #251a12;
+    --ink-soft: #6b5c46;
+    --paper: #efe6cf;
+    --panel: #f8f2e2;
+    --charcoal: #17140f;
+    --charcoal-deep: #0c0a07;
+    --tan: #b6863a;
+    --tan-soft: #d9b979;
+    --line: #ddd0aa;
+    --rust: #8a3323;
+    --good: #3f6b46;
+    --on-dark-soft: rgba(239, 230, 207, 0.62);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--charcoal);
+    color: var(--paper);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-variant-numeric: tabular-nums;
+    line-height: 1.45;
+  }
+
+  .display {
+    font-family: Impact, Haettenschweiler, "Arial Narrow", "Helvetica Neue Condensed", "Liberation Sans Narrow", Arial, sans-serif;
+    font-weight: 800;
+    text-transform: uppercase;
+    letter-spacing: 0.02em;
+  }
+
+  h1, h2, h3 { text-wrap: balance; margin: 0; }
+
+  button {
+    font-family: inherit;
+    cursor: pointer;
+  }
+
+  input {
+    font-family: inherit;
+    font-variant-numeric: tabular-nums;
+  }
+
+  /* View-mode gating: elements tagged edit-only are hidden for anyone without
+     a valid ?edit= link; elements tagged view-only are hidden for the editor. */
+  body.view-mode .edit-only { display: none !important; }
+  body:not(.view-mode) .view-only { display: none !important; }
+
+  .mode-banner {
+    background: var(--tan);
+    color: var(--ink);
+    font-size: 12.5px;
+    font-weight: 600;
+    text-align: center;
+    padding: 7px 12px;
+    letter-spacing: 0.02em;
+  }
+
+  input[readonly] { cursor: default; }
+
+  /* ---------- Header ---------- */
+
+  .masthead {
+    background: linear-gradient(180deg, var(--ink) 0%, var(--charcoal-deep) 100%);
+    color: var(--paper);
+    padding: 28px clamp(16px, 4vw, 48px) 22px;
+    border-bottom: 4px solid var(--tan);
+  }
+
+  .masthead-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 16px;
+    flex-wrap: wrap;
+    max-width: 1180px;
+    margin: 0 auto;
+  }
+
+  .league-name-input {
+    background: transparent;
+    border: none;
+    border-bottom: 2px solid transparent;
+    color: var(--paper);
+    font-size: clamp(24px, 4vw, 34px);
+    padding: 2px 2px;
+    min-width: 220px;
+  }
+  .league-name-input:focus { outline: none; border-bottom-color: var(--tan); }
+  .league-name-input:hover { border-bottom-color: rgba(239,230,207,0.35); }
+
+  .masthead-sub {
+    font-size: 12.5px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--tan-soft);
+    font-weight: 600;
+  }
+
+  /* ---------- Layout ---------- */
+
+  .wrap {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: clamp(16px, 3vw, 32px);
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+    gap: 24px;
+    align-items: start;
+  }
+
+  @media (max-width: 860px) {
+    .wrap { grid-template-columns: 1fr; }
+  }
+
+  .panel {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+  }
+
+  .panel-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+
+  .panel-head h2 {
+    font-size: 13px;
+    letter-spacing: 0.1em;
+  }
+
+  .panel-body { padding: 6px 0; }
+
+  /* ---------- Draft board ---------- */
+
+  .board-row {
+    display: grid;
+    grid-template-columns: 56px 1fr auto auto;
+    align-items: center;
+    gap: 14px;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .board-row:last-child { border-bottom: none; }
+
+  .rank-badge {
+    width: 44px;
+    height: 44px;
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 19px;
+    color: var(--paper);
+    background: var(--ink);
+    flex-shrink: 0;
+  }
+  .rank-badge.gold { background: var(--tan); color: var(--ink); }
+  .rank-badge.last { background: var(--rust); }
+
+  .team-name-input {
+    border: none;
+    background: transparent;
+    font-size: 16.5px;
+    font-weight: 600;
+    color: var(--ink);
+    padding: 4px 4px;
+    border-bottom: 1px solid transparent;
+    width: 100%;
+  }
+  .team-name-input:hover { border-bottom-color: var(--line); }
+  .team-name-input:focus { outline: none; border-bottom-color: var(--tan); }
+
+  .points-col { text-align: right; min-width: 74px; }
+  .points-val { font-size: 19px; font-weight: 700; }
+  .points-lbl { display: block; font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-soft); }
+
+  .trend {
+    width: 26px;
+    text-align: center;
+    font-size: 14px;
+    font-weight: 700;
+  }
+  .trend.up { color: var(--good); }
+  .trend.down { color: var(--rust); }
+  .trend.flat { color: var(--ink-soft); }
+
+  .empty-note {
+    padding: 22px 18px;
+    color: var(--ink-soft);
+    font-size: 14px;
+  }
+
+  .rank-badge.open { background: var(--line); color: var(--ink-soft); }
+  .board-row.open-slot .points-lbl,
+  .board-row.open-slot .points-val { color: var(--ink-soft); }
+
+  /* ---------- Draft picks ---------- */
+
+  .pick-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 18px;
+    border-bottom: 1px solid var(--line);
+  }
+  .pick-row:last-child { border-bottom: none; }
+  .pick-row.on-deck { background: rgba(182, 134, 58, 0.12); }
+  .pick-row.waiting { color: var(--ink-soft); }
+
+  .pick-who { display: flex; align-items: baseline; gap: 8px; min-width: 0; }
+  .pick-name { font-weight: 600; font-size: 14.5px; }
+  .pick-status { font-size: 12px; color: var(--ink-soft); white-space: nowrap; }
+
+  .pick-slot-grid { display: flex; flex-wrap: wrap; gap: 6px; justify-content: flex-end; }
+
+  .slot-btn {
+    width: 32px;
+    height: 32px;
+    border-radius: 6px;
+    border: 1px solid var(--line);
+    background: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+  .slot-btn:hover { border-color: var(--tan); background: var(--tan); }
+
+  .pick-locked-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-width: 30px;
+    height: 28px;
+    border-radius: 6px;
+    background: var(--ink);
+    color: var(--paper);
+    font-weight: 700;
+    font-size: 13px;
+    padding: 0 8px;
+    flex-shrink: 0;
+  }
+
+  /* ---------- Toolbar ---------- */
+
+  .toolbar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+    font-size: 12.5px;
+  }
+
+  .direction-toggle {
+    display: flex;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  .direction-toggle button {
+    border: none;
+    background: var(--panel);
+    padding: 6px 10px;
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: var(--ink-soft);
+  }
+  .direction-toggle button.active {
+    background: var(--ink);
+    color: var(--paper);
+    font-weight: 600;
+  }
+
+  .icon-btn {
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 11.5px;
+    color: var(--ink-soft);
+  }
+  .icon-btn:hover { border-color: var(--tan); color: var(--ink); }
+
+  /* ---------- Challenge form ---------- */
+
+  .challenge-form {
+    padding: 14px 18px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+
+  .field-row { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+
+  .challenge-name-input {
+    flex: 1;
+    min-width: 140px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 8px 10px;
+    font-size: 14px;
+    background: #fff;
+  }
+  .challenge-name-input:focus { outline: none; border-color: var(--tan); }
+
+  .score-grid {
+    display: grid;
+    grid-template-columns: 1fr 84px;
+    gap: 8px 10px;
+  }
+
+  .score-grid label {
+    align-self: center;
+    font-size: 13.5px;
+    color: var(--ink);
+  }
+
+  .score-grid input {
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 6px 8px;
+    font-size: 14px;
+    text-align: right;
+    background: #fff;
+    width: 100%;
+  }
+  .score-grid input:focus { outline: none; border-color: var(--tan); }
+
+  .add-btn {
+    align-self: flex-start;
+    background: var(--ink);
+    color: var(--paper);
+    border: none;
+    border-radius: 5px;
+    padding: 9px 16px;
+    font-size: 13.5px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+  }
+  .add-btn:hover { background: var(--charcoal-deep); }
+  .add-btn:disabled { background: var(--ink-soft); cursor: not-allowed; opacity: 0.6; }
+
+  .hint {
+    font-size: 12px;
+    color: var(--ink-soft);
+  }
+
+  select.challenge-name-input {
+    -webkit-appearance: none;
+    appearance: none;
+    background: #fff url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="10" height="6"><path d="M0 0l5 6 5-6z" fill="%236b5c46"/></svg>') no-repeat right 10px center;
+  }
+
+  /* ---------- Challenge log ---------- */
+
+  .log-item {
+    border-bottom: 1px solid var(--line);
+  }
+  .log-item:last-child { border-bottom: none; }
+
+  .log-summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 11px 18px;
+    cursor: pointer;
+    user-select: none;
+  }
+  .log-summary:hover { background: rgba(37,26,18,0.06); }
+
+  .log-title { font-weight: 600; font-size: 14px; }
+  .log-meta { font-size: 11.5px; color: var(--ink-soft); letter-spacing: 0.02em; }
+
+  .log-detail {
+    padding: 4px 18px 14px;
+    display: none;
+  }
+  .log-detail.open { display: block; }
+
+  .log-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .log-table th {
+    text-align: left;
+    font-size: 10.5px;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--ink-soft);
+    padding: 4px 6px;
+    border-bottom: 1px solid var(--line);
+  }
+  .log-table td { padding: 4px 6px; border-bottom: 1px solid rgba(221,208,170,0.5); }
+  .log-table td.num, .log-table th.num { text-align: right; }
+
+  .delete-challenge {
+    border: none;
+    background: transparent;
+    color: var(--rust);
+    font-size: 12px;
+    padding: 6px 4px;
+    margin-top: 6px;
+  }
+  .delete-challenge:hover { text-decoration: underline; }
+
+  /* ---------- Footer utility bar ---------- */
+
+  .util-bar {
+    max-width: 1180px;
+    margin: 0 auto;
+    padding: 0 clamp(16px, 3vw, 32px) 40px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 12px;
+    flex-wrap: wrap;
+  }
+
+  .rules-note {
+    font-size: 12px;
+    color: var(--on-dark-soft);
+    max-width: 480px;
+  }
+</style>
+</head>
+<body>
+
+<div class="mode-banner view-only">Live view — only the commissioner can update scores</div>
+
+<div class="masthead">
+  <div class="masthead-row">
+    <input class="league-name-input display" id="leagueName" value="League Draft Order" maxlength="60" />
+    <div class="masthead-sub">&#9733; Challenge Standings &amp; Draft Order &#9733;</div>
+  </div>
+</div>
+
+<div class="wrap">
+  <!-- Draft board -->
+  <div class="panel" id="boardPanel">
+    <div class="panel-head">
+      <h2 class="display">Draft Order</h2>
+      <div class="direction-toggle edit-only" id="directionToggle">
+        <button data-dir="best" id="dirBest">Best Picks First</button>
+        <button data-dir="worst" id="dirWorst">Worst Picks First</button>
+      </div>
+      <span class="hint view-only" id="directionViewLabel"></span>
+    </div>
+    <div class="panel-body" id="boardBody">
+      <div class="empty-note">Loading live standings…</div>
+    </div>
+
+    <div class="panel-head">
+      <h2 class="display">Assign Draft Picks</h2>
+      <div class="toolbar edit-only">
+        <button class="icon-btn" id="undoPickBtn">Undo Last Pick</button>
+        <button class="icon-btn" id="clearPicksBtn">Clear All Picks</button>
+      </div>
+    </div>
+    <div class="panel-body" id="pickBody"></div>
+  </div>
+
+  <!-- Challenges -->
+  <div class="panel edit-only">
+    <div class="panel-head">
+      <h2 class="display">Add Challenge</h2>
+    </div>
+    <div class="challenge-form">
+      <div class="field-row">
+        <select class="challenge-name-input" id="templateSelect"></select>
+      </div>
+      <div class="field-row">
+        <input class="challenge-name-input" id="challengeName" placeholder="Challenge name (e.g. Week 3: Trivia)" maxlength="60" />
+        <div class="direction-toggle" id="scoreDirToggle">
+          <button data-sdir="high" id="sdirHigh" class="active">High Score Wins</button>
+          <button data-sdir="low" id="sdirLow">Low Score Wins</button>
+        </div>
+      </div>
+      <div class="hint" id="unitHint"></div>
+      <div class="score-grid" id="scoreGrid"></div>
+      <div class="field-row" style="justify-content: space-between;">
+        <span class="hint" id="formHint">Enter a score for every team.</span>
+        <button class="add-btn" id="addChallengeBtn">Add Challenge</button>
+      </div>
+    </div>
+
+    <div class="panel-head">
+      <h2 class="display">Challenge Log</h2>
+      <span class="hint" id="logCount"></span>
+    </div>
+    <div class="panel-body" id="logBody"></div>
+  </div>
+
+  <!-- Read-only challenge log for viewers (edit version lives in the panel above) -->
+  <div class="panel view-only">
+    <div class="panel-head">
+      <h2 class="display">Challenge Log</h2>
+      <span class="hint" id="logCountView"></span>
+    </div>
+    <div class="panel-body" id="logBodyView"></div>
+  </div>
+</div>
+
+<div class="util-bar">
+  <div class="rules-note">
+    Points per challenge: 1st place scores <strong id="ptsMaxNote">10</strong>, last place scores 1. Totals across all
+    challenges set the standings; ties keep team order stable. Once challenges are logged, use Assign Draft Picks
+    below the board to let each team claim their spot, best finish first.
+  </div>
+  <div class="toolbar edit-only">
+    <button class="icon-btn" id="exportBtn">Export</button>
+    <button class="icon-btn" id="importBtn">Import</button>
+    <button class="icon-btn" id="resetBtn">Reset League</button>
+  </div>
+</div>
+<input type="file" id="importFile" accept="application/json" style="display:none" />
+
+<script>
+(function () {
+  // ==========================================================================
+  // 1) FILL THESE IN during setup — see the instructions comment at the top.
+  var FIREBASE_CONFIG = {
+    apiKey: "AIzaSyAciBLUQMKjhBTRz5TJAtZXgEJfjMjIJ5g",
+    authDomain: "finalfantasyfootball.firebaseapp.com",
+    databaseURL: "https://finalfantasyfootball-default-rtdb.firebaseio.com",
+    projectId: "finalfantasyfootball",
+    storageBucket: "finalfantasyfootball.firebasestorage.app",
+    messagingSenderId: "576976254564",
+    appId: "1:576976254564:web:8978ab0b1134e868da9171"
+  };
+  var EDIT_PASSPHRASE = "Vikings";
+  var DB_PATH = "leagues/main";
+  // ==========================================================================
+
+  var params = new URLSearchParams(window.location.search);
+  var EDIT_MODE = params.get('edit') === EDIT_PASSPHRASE && EDIT_PASSPHRASE !== "Vikings";
+  if (!EDIT_MODE) document.body.classList.add('view-mode');
+
+  firebase.initializeApp(FIREBASE_CONFIG);
+  var dbRef = firebase.database().ref(DB_PATH);
+
+  var TEAM_COUNT = 10;
+
+  var CHALLENGE_TEMPLATES = [
+    { name: 'Paper Airplane Distance Throw', direction: 'high', hint: 'Distance thrown (e.g. feet) — farthest wins.' },
+    { name: 'Cookie Face Challenge', direction: 'low', hint: 'Time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: 'Mario Kart Fastest Lap', direction: 'low', hint: 'Lap time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: '5th Grade Math Worksheet Race', direction: 'low', hint: 'Completion time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: 'Longest Continuous Paper Tear', direction: 'high', hint: 'Strip length (e.g. inches) — longest wins.' },
+    { name: 'NYT Crossword Race', direction: 'low', hint: 'Completion time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: 'Sour Candy Contest', direction: 'high', hint: 'Time held out before a sour face — longest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: 'Geography Test Race', direction: 'low', hint: 'Completion time — fastest wins. Enter as seconds (12.4) or mm:ss (1:23.4).' },
+    { name: 'Jackbox Game', direction: 'low', hint: "Enter each team's finishing place — 1 for 1st, 10 for 10th." },
+    { name: 'Disc Golf Closest to the Hole', direction: 'low', hint: 'Distance from the hole (e.g. feet) — closest wins.' }
+  ];
+
+  var DEFAULT_TEAM_NAMES = [
+    'Austin', 'Cainan', 'Hunter', 'Jonathan', 'Klay',
+    'Lauren P.', 'Lauren T.', 'Michael', 'Rodney', 'Tate'
+  ];
+
+  function defaultState() {
+    var teams = [];
+    for (var i = 1; i <= TEAM_COUNT; i++) {
+      teams.push({ id: 't' + i, name: DEFAULT_TEAM_NAMES[i - 1] || 'Team ' + i });
+    }
+    return {
+      leagueName: 'League Draft Order',
+      draftDirection: 'best', // 'best' = rank 1 drafts first, 'worst' = rank 10 drafts first
+      teams: teams,
+      challenges: [], // { id, name, direction: 'high'|'low', scores: {teamId: number}, ts }
+      draftPicks: {} // teamId -> chosen draft slot (1..N), filled in finish order once picking starts
+    };
+  }
+
+  var state = defaultState();
+  var openLogIds = {};
+  var firstLoadDone = false;
+
+  function save() {
+    if (!EDIT_MODE) return;
+    var payload = JSON.parse(JSON.stringify(state));
+    payload._editKey = EDIT_PASSPHRASE;
+    dbRef.set(payload);
+  }
+
+  dbRef.on('value', function (snapshot) {
+    var val = snapshot.val();
+    if (!val) {
+      if (EDIT_MODE) {
+        state = defaultState();
+        save();
+        onStateUpdated();
+      } else {
+        document.getElementById('boardBody').innerHTML =
+          '<div class="empty-note">Waiting for the commissioner to set up the league…</div>';
+      }
+      return;
+    }
+    delete val._editKey;
+    if (!val.draftPicks) val.draftPicks = {};
+    state = val;
+    onStateUpdated();
+  }, function (err) {
+    document.getElementById('boardBody').innerHTML =
+      '<div class="empty-note">Couldn\'t reach the shared database (' + err.message + '). Check your Firebase setup.</div>';
+  });
+
+  // ---------- Standings math ----------
+
+  function computeStandings(challenges) {
+    var totals = {};
+    state.teams.forEach(function (t) { totals[t.id] = 0; });
+
+    challenges.forEach(function (ch) {
+      var entries = state.teams.map(function (t) {
+        return { id: t.id, score: ch.scores[t.id] };
+      });
+      entries.sort(function (a, b) {
+        return ch.direction === 'low' ? a.score - b.score : b.score - a.score;
+      });
+      var n = entries.length;
+      var rank = 1;
+      for (var i = 0; i < n; i++) {
+        if (i > 0 && entries[i].score === entries[i - 1].score) {
+          // tie: same rank as previous
+        } else {
+          rank = i + 1;
+        }
+        var points = n - rank + 1;
+        totals[entries[i].id] += points;
+      }
+    });
+
+    var standings = state.teams.map(function (t) {
+      return { id: t.id, name: t.name, total: totals[t.id] };
+    });
+    var order = {};
+    state.teams.forEach(function (t, idx) { order[t.id] = idx; });
+    standings.sort(function (a, b) {
+      if (b.total !== a.total) return b.total - a.total;
+      return order[a.id] - order[b.id];
+    });
+    return standings;
+  }
+
+  function rankOf(standings, teamId) {
+    for (var i = 0; i < standings.length; i++) {
+      if (standings[i].id === teamId) return i + 1;
+    }
+    return null;
+  }
+
+  // ---------- Rendering ----------
+
+  function el(tag, attrs, children) {
+    var e = document.createElement(tag);
+    attrs = attrs || {};
+    Object.keys(attrs).forEach(function (k) {
+      if (k === 'text') e.textContent = attrs[k];
+      else if (k === 'html') e.innerHTML = attrs[k];
+      else e.setAttribute(k, attrs[k]);
+    });
+    (children || []).forEach(function (c) { e.appendChild(c); });
+    return e;
+  }
+
+  function tag_span() { return 'div'; }
+
+  function renderBoard() {
+    var body = document.getElementById('boardBody');
+    body.innerHTML = '';
+
+    document.getElementById('dirBest').classList.toggle('active', state.draftDirection === 'best');
+    document.getElementById('dirWorst').classList.toggle('active', state.draftDirection === 'worst');
+    document.getElementById('directionViewLabel').textContent =
+      state.draftDirection === 'worst' ? 'Worst record picks first' : 'Best record picks first';
+
+    if (state.challenges.length === 0) {
+      body.appendChild(el('div', {
+        class: 'empty-note',
+        text: 'No challenges logged yet — the board fills in once the commissioner adds one.'
+      }));
+      return;
+    }
+
+    var current = computeStandings(state.challenges);
+    var previous = state.challenges.length > 1
+      ? computeStandings(state.challenges.slice(0, -1))
+      : null;
+
+    var pickOrder = current.slice();
+    if (state.draftDirection === 'worst') pickOrder.reverse();
+
+    var n = current.length;
+    var picksMade = Object.keys(state.draftPicks).length > 0;
+
+    function renderTeamRow(row, draftPos, standingsRank) {
+      var badgeClass = 'rank-badge';
+      if (standingsRank === 1) badgeClass += ' gold';
+      if (standingsRank === n) badgeClass += ' last';
+
+      var badge = el(tag_span(), { class: badgeClass, text: String(draftPos) });
+
+      var nameInput = el('input', {
+        class: 'team-name-input',
+        value: row.name,
+        maxlength: '30',
+        'data-team-id': row.id
+      });
+      nameInput.readOnly = !EDIT_MODE;
+      nameInput.addEventListener('change', function () {
+        var team = state.teams.filter(function (t) { return t.id === row.id; })[0];
+        team.name = nameInput.value;
+        save();
+      });
+
+      var pointsCol = el('div', { class: 'points-col' }, [
+        el(tag_span(), { class: 'points-lbl', text: 'Rank ' + standingsRank }),
+        el(tag_span(), { class: 'points-val', text: String(row.total) + ' pts' })
+      ]);
+
+      var trendChar = '—', trendClass = 'flat';
+      if (previous) {
+        var prevRank = rankOf(previous, row.id);
+        if (prevRank > standingsRank) { trendChar = '▲'; trendClass = 'up'; }
+        else if (prevRank < standingsRank) { trendChar = '▼'; trendClass = 'down'; }
+      }
+      var trend = el('div', { class: 'trend ' + trendClass, text: trendChar, title: 'Movement after latest challenge' });
+
+      body.appendChild(el('div', { class: 'board-row' }, [badge, nameInput, pointsCol, trend]));
+    }
+
+    if (!picksMade) {
+      pickOrder.forEach(function (row, idx) {
+        renderTeamRow(row, idx + 1, rankOf(current, row.id));
+      });
+      return;
+    }
+
+    var bySlot = {};
+    Object.keys(state.draftPicks).forEach(function (tid) {
+      bySlot[state.draftPicks[tid]] = tid;
+    });
+
+    var slots = [];
+    for (var s = 1; s <= n; s++) slots.push(s);
+
+    slots.forEach(function (slot) {
+      var tid = bySlot[slot];
+      if (!tid) {
+        var openBadge = el(tag_span(), { class: 'rank-badge open', text: String(slot) });
+        var openLabel = el('div', { class: 'team-name-input', text: 'Open — awaiting pick' });
+        openLabel.style.color = 'var(--ink-soft)';
+        openLabel.style.fontStyle = 'italic';
+        var openPoints = el('div', { class: 'points-col' }, [el(tag_span(), { class: 'points-lbl', text: '—' })]);
+        var openTrend = el('div', { class: 'trend flat', text: '' });
+        body.appendChild(el('div', { class: 'board-row open-slot' }, [openBadge, openLabel, openPoints, openTrend]));
+        return;
+      }
+      var row = current.filter(function (t) { return t.id === tid; })[0];
+      renderTeamRow(row, slot, rankOf(current, tid));
+    });
+  }
+
+  function renderScoreGrid() {
+    var grid = document.getElementById('scoreGrid');
+    grid.innerHTML = '';
+    state.teams.forEach(function (t) {
+      var label = el('label', { text: t.name, 'data-for': t.id });
+      var input = el('input', {
+        type: 'text',
+        inputmode: 'decimal',
+        placeholder: 'e.g. 12.4 or 1:23.4',
+        'data-team-id': t.id
+      });
+      grid.appendChild(label);
+      grid.appendChild(input);
+    });
+  }
+
+  function parseScoreValue(raw) {
+    raw = String(raw).trim();
+    if (raw.indexOf(':') === -1) return parseFloat(raw);
+    var parts = raw.split(':').map(function (p) { return parseFloat(p); });
+    if (parts.some(isNaN)) return NaN;
+    if (parts.length === 2) return parts[0] * 60 + parts[1];
+    if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+    return NaN;
+  }
+
+  function computeChallengePoints(ch) {
+    var entries = state.teams.map(function (t) {
+      return { id: t.id, name: t.name, score: ch.scores[t.id] };
+    });
+    entries.sort(function (a, b) {
+      return ch.direction === 'low' ? a.score - b.score : b.score - a.score;
+    });
+    var n = entries.length, rank = 1;
+    entries.forEach(function (e, i) {
+      if (i > 0 && e.score === entries[i - 1].score) {
+        // keep rank
+      } else {
+        rank = i + 1;
+      }
+      e.points = n - rank + 1;
+    });
+    return entries;
+  }
+
+  function escapeHtml(s) {
+    return String(s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  function renderLogInto(bodyId, countId, allowDelete) {
+    var body = document.getElementById(bodyId);
+    body.innerHTML = '';
+    var countEl = document.getElementById(countId);
+    if (countEl) {
+      countEl.textContent = state.challenges.length ? state.challenges.length + ' logged' : '';
+    }
+
+    if (state.challenges.length === 0) {
+      body.appendChild(el('div', { class: 'empty-note', text: 'Challenges will show up here once logged.' }));
+      return;
+    }
+
+    var ordered = state.challenges.slice().reverse();
+
+    ordered.forEach(function (ch) {
+      var isOpen = !!openLogIds[ch.id];
+
+      var summary = el('div', { class: 'log-summary' }, [
+        el('div', {}, [
+          el('div', { class: 'log-title', text: ch.name }),
+          el('div', { class: 'log-meta', text: (ch.direction === 'low' ? 'Low score wins' : 'High score wins') })
+        ]),
+        el(tag_span(), { class: 'hint', text: isOpen ? 'Hide' : 'Details' })
+      ]);
+      summary.addEventListener('click', function () {
+        openLogIds[ch.id] = !openLogIds[ch.id];
+        renderLog();
+      });
+
+      var detail = el('div', { class: 'log-detail' + (isOpen ? ' open' : '') });
+      if (isOpen) {
+        var challengeStandings = computeChallengePoints(ch);
+        var table = document.createElement('table');
+        table.className = 'log-table';
+        table.innerHTML =
+          '<thead><tr><th>Team</th><th class="num">Score</th><th class="num">Points</th></tr></thead>';
+        var tbody = document.createElement('tbody');
+        challengeStandings.forEach(function (r) {
+          var tr = document.createElement('tr');
+          tr.innerHTML = '<td>' + escapeHtml(r.name) + '</td><td class="num">' + r.score + '</td><td class="num">' + r.points + '</td>';
+          tbody.appendChild(tr);
+        });
+        table.appendChild(tbody);
+        detail.appendChild(table);
+
+        if (allowDelete) {
+          var delBtn = el('button', { class: 'delete-challenge', text: 'Delete this challenge' });
+          delBtn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            state.challenges = state.challenges.filter(function (c) { return c.id !== ch.id; });
+            delete openLogIds[ch.id];
+            save();
+            renderAll();
+          });
+          detail.appendChild(delBtn);
+        }
+      }
+
+      body.appendChild(el('div', { class: 'log-item' }, [summary, detail]));
+    });
+  }
+
+  function renderLog() {
+    renderLogInto('logBody', 'logCount', true);
+    renderLogInto('logBodyView', 'logCountView', false);
+  }
+
+  function renderTemplateSelect() {
+    var sel = document.getElementById('templateSelect');
+    if (!sel) return;
+    var prevValue = sel.value;
+    sel.innerHTML = '';
+    sel.appendChild(el('option', { value: '', text: '— Choose one of your league\'s challenges —' }));
+    sel.appendChild(el('option', { value: '__custom__', text: 'Custom / other challenge…' }));
+    CHALLENGE_TEMPLATES.forEach(function (tpl, i) {
+      var playedCount = state.challenges.filter(function (c) { return c.name === tpl.name; }).length;
+      var label = tpl.name + (playedCount ? '  (played ' + playedCount + 'x)' : '');
+      sel.appendChild(el('option', { value: String(i), text: label }));
+    });
+    sel.value = prevValue || '';
+  }
+
+  function renderPicks() {
+    var body = document.getElementById('pickBody');
+    body.innerHTML = '';
+
+    if (state.challenges.length === 0) {
+      body.appendChild(el('div', {
+        class: 'empty-note',
+        text: 'Picks unlock once there are standings to rank teams by.'
+      }));
+      return;
+    }
+
+    var current = computeStandings(state.challenges);
+    var pickOrder = current.slice();
+    if (state.draftDirection === 'worst') pickOrder.reverse();
+
+    var n = pickOrder.length;
+    var takenSlots = {};
+    Object.keys(state.draftPicks).forEach(function (tid) {
+      takenSlots[state.draftPicks[tid]] = true;
+    });
+
+    var onDeckFound = false;
+
+    pickOrder.forEach(function (row, idx) {
+      var slot = state.draftPicks[row.id];
+      var rowClass = 'pick-row';
+
+      var who = el('div', { class: 'pick-who' }, [
+        el(tag_span(), { class: 'pick-status', text: 'Finished #' + (idx + 1) }),
+        el(tag_span(), { class: 'pick-name', text: row.name })
+      ]);
+
+      var children;
+      if (slot) {
+        children = [who, el(tag_span(), { class: 'pick-locked-badge', text: 'Pick ' + slot })];
+      } else if (!onDeckFound) {
+        onDeckFound = true;
+        rowClass += ' on-deck';
+        if (EDIT_MODE) {
+          var openSlots = [];
+          for (var s = 1; s <= n; s++) {
+            if (!takenSlots[s]) openSlots.push(s);
+          }
+          var grid = el('div', { class: 'pick-slot-grid' }, openSlots.map(function (slotNum) {
+            var btn = el('button', { class: 'slot-btn', text: String(slotNum) });
+            btn.addEventListener('click', function () {
+              state.draftPicks[row.id] = slotNum;
+              save();
+              renderAll();
+            });
+            return btn;
+          }));
+          children = [who, grid];
+        } else {
+          children = [who, el(tag_span(), { class: 'pick-status', text: 'On the clock' })];
+        }
+      } else {
+        rowClass += ' waiting';
+        children = [who, el(tag_span(), { class: 'pick-status', text: 'Waiting…' })];
+      }
+
+      body.appendChild(el('div', { class: rowClass }, children));
+    });
+  }
+
+  function renderAll() {
+    document.getElementById('ptsMaxNote').textContent = String(state.teams.length);
+    renderTemplateSelect();
+    renderBoard();
+    renderPicks();
+    renderLog();
+  }
+
+  function onStateUpdated() {
+    renderAll();
+    if (!firstLoadDone) {
+      firstLoadDone = true;
+      if (document.activeElement !== document.getElementById('leagueName')) {
+        document.getElementById('leagueName').value = state.leagueName;
+      }
+      renderScoreGrid();
+    }
+  }
+
+  // ---------- Wiring (edit-mode actions are no-ops for viewers since their
+  // controls are hidden, but we still guard save() itself as a backstop) ----------
+
+  var leagueNameInput = document.getElementById('leagueName');
+  leagueNameInput.readOnly = !EDIT_MODE;
+  leagueNameInput.addEventListener('change', function (e) {
+    state.leagueName = e.target.value;
+    save();
+  });
+
+  document.getElementById('dirBest').addEventListener('click', function () {
+    state.draftDirection = 'best'; save(); renderBoard(); renderPicks();
+  });
+  document.getElementById('dirWorst').addEventListener('click', function () {
+    state.draftDirection = 'worst'; save(); renderBoard(); renderPicks();
+  });
+
+  document.getElementById('undoPickBtn').addEventListener('click', function () {
+    var current = computeStandings(state.challenges);
+    var pickOrder = current.slice();
+    if (state.draftDirection === 'worst') pickOrder.reverse();
+    var lastPickedIdx = -1;
+    pickOrder.forEach(function (row, idx) {
+      if (state.draftPicks[row.id]) lastPickedIdx = idx;
+    });
+    if (lastPickedIdx === -1) return;
+    delete state.draftPicks[pickOrder[lastPickedIdx].id];
+    save();
+    renderAll();
+  });
+
+  document.getElementById('clearPicksBtn').addEventListener('click', function () {
+    if (Object.keys(state.draftPicks).length === 0) return;
+    if (!confirm('Clear all draft pick assignments? Challenge scores and history are unaffected.')) return;
+    state.draftPicks = {};
+    save();
+    renderAll();
+  });
+
+  var scoreDirection = 'high';
+  document.getElementById('sdirHigh').addEventListener('click', function () {
+    scoreDirection = 'high';
+    document.getElementById('sdirHigh').classList.add('active');
+    document.getElementById('sdirLow').classList.remove('active');
+  });
+  document.getElementById('sdirLow').addEventListener('click', function () {
+    scoreDirection = 'low';
+    document.getElementById('sdirLow').classList.add('active');
+    document.getElementById('sdirHigh').classList.remove('active');
+  });
+
+  function setDirectionButtons(dir) {
+    scoreDirection = dir;
+    document.getElementById('sdirHigh').classList.toggle('active', dir === 'high');
+    document.getElementById('sdirLow').classList.toggle('active', dir === 'low');
+  }
+
+  document.getElementById('templateSelect').addEventListener('change', function (e) {
+    var val = e.target.value;
+    var nameInput = document.getElementById('challengeName');
+    var unitHint = document.getElementById('unitHint');
+    if (val === '') return;
+    if (val === '__custom__') {
+      nameInput.value = '';
+      unitHint.textContent = '';
+      nameInput.focus();
+      return;
+    }
+    var tpl = CHALLENGE_TEMPLATES[parseInt(val, 10)];
+    nameInput.value = tpl.name;
+    setDirectionButtons(tpl.direction);
+    unitHint.textContent = tpl.hint;
+  });
+
+  document.getElementById('addChallengeBtn').addEventListener('click', function () {
+    var nameInput = document.getElementById('challengeName');
+    var name = nameInput.value.trim();
+    var hint = document.getElementById('formHint');
+
+    if (!name) {
+      hint.textContent = 'Give this challenge a name.';
+      hint.style.color = '#a13d2b';
+      return;
+    }
+
+    var scores = {};
+    var missing = false;
+    var invalid = false;
+    document.querySelectorAll('#scoreGrid input').forEach(function (inp) {
+      var v = inp.value.trim();
+      if (v === '') { missing = true; return; }
+      var parsed = parseScoreValue(v);
+      if (isNaN(parsed)) { invalid = true; return; }
+      scores[inp.getAttribute('data-team-id')] = parsed;
+    });
+
+    if (missing) {
+      hint.textContent = 'Enter a score for every team before adding.';
+      hint.style.color = '#a13d2b';
+      return;
+    }
+    if (invalid) {
+      hint.textContent = 'Scores should be a number (12.4) or a time (1:23.4).';
+      hint.style.color = '#a13d2b';
+      return;
+    }
+
+    state.challenges.push({
+      id: 'c' + Date.now() + Math.random().toString(36).slice(2, 7),
+      name: name,
+      direction: scoreDirection,
+      scores: scores
+    });
+    save();
+
+    nameInput.value = '';
+    document.getElementById('templateSelect').value = '';
+    document.getElementById('unitHint').textContent = '';
+    hint.textContent = 'Enter a score for every team.';
+    hint.style.color = '';
+    renderScoreGrid();
+    renderAll();
+  });
+
+  document.getElementById('exportBtn').addEventListener('click', function () {
+    var blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = (state.leagueName || 'league').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-draft-order.json';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  });
+
+  document.getElementById('importBtn').addEventListener('click', function () {
+    document.getElementById('importFile').click();
+  });
+  document.getElementById('importFile').addEventListener('change', function (e) {
+    var file = e.target.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function () {
+      try {
+        var parsed = JSON.parse(reader.result);
+        if (!parsed.teams || parsed.teams.length !== TEAM_COUNT) throw new Error('bad file');
+        if (!parsed.draftPicks) parsed.draftPicks = {};
+        state = parsed;
+        openLogIds = {};
+        save();
+        document.getElementById('leagueName').value = state.leagueName;
+        renderScoreGrid();
+        renderAll();
+      } catch (err) {
+        alert('That file doesn\'t look like a valid export from this app.');
+      }
+    };
+    reader.readAsText(file);
+    e.target.value = '';
+  });
+
+  document.getElementById('resetBtn').addEventListener('click', function () {
+    if (!confirm('Reset the whole league? This clears all team names, challenge history, and draft picks.')) return;
+    state = defaultState();
+    openLogIds = {};
+    save();
+    document.getElementById('leagueName').value = state.leagueName;
+    renderScoreGrid();
+    renderAll();
+  });
+})();
+</script>
+</body>
+</html>
