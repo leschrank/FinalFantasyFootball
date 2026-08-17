@@ -563,7 +563,7 @@
   // ==========================================================================
 
   var params = new URLSearchParams(window.location.search);
-  var EDIT_MODE = params.get('edit') === EDIT_PASSPHRASE && EDIT_PASSPHRASE !== "Vikings";
+  var EDIT_MODE = params.get('edit') === EDIT_PASSPHRASE;
   if (!EDIT_MODE) document.body.classList.add('view-mode');
 
   firebase.initializeApp(FIREBASE_CONFIG);
