@@ -331,7 +331,7 @@
     border: 1px solid var(--line);
     border-radius: 5px;
     padding: 8px 10px;
-    font-size: 14px;
+    font-size: 16px;
     background: #fff;
   }
   .challenge-name-input:focus { outline: none; border-color: var(--tan); }
@@ -452,6 +452,54 @@
     color: var(--on-dark-soft);
     max-width: 480px;
   }
+
+  /* ---------- Export/Import modal ---------- */
+
+  .modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    background: rgba(12, 10, 7, 0.72);
+    z-index: 100;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .modal-overlay.open { display: flex; }
+
+  .modal-box {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 6px;
+    width: 100%;
+    max-width: 560px;
+    max-height: 90vh;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+
+  .modal-body {
+    padding: 14px 18px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    overflow-y: auto;
+  }
+
+  .modal-textarea {
+    width: 100%;
+    min-height: 220px;
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: 10px;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+    font-size: 16px;
+    background: #fff;
+    color: var(--ink);
+    resize: vertical;
+  }
+  .modal-textarea:focus { outline: none; border-color: var(--tan); }
 </style>
 </head>
 <body>
@@ -544,6 +592,27 @@
   </div>
 </div>
 <input type="file" id="importFile" accept="application/json" style="display:none" />
+
+<div class="modal-overlay" id="dataModal">
+  <div class="modal-box">
+    <div class="panel-head">
+      <h2 class="display" id="modalTitle">Export</h2>
+      <button class="icon-btn" id="modalCloseBtn">Close</button>
+    </div>
+    <div class="modal-body">
+      <p class="hint" id="modalInstructions"></p>
+      <textarea id="modalTextarea" class="modal-textarea" spellcheck="false"></textarea>
+      <div class="field-row" style="justify-content: space-between;">
+        <span class="hint" id="modalHint"></span>
+        <div class="toolbar">
+          <button class="icon-btn" id="modalFilePickerBtn" style="display:none;">Choose a File Instead</button>
+          <button class="icon-btn" id="modalCopyBtn" style="display:none;">Copy to Clipboard</button>
+          <button class="add-btn" id="modalLoadBtn" style="display:none;">Load This Data</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
 
 <script>
 (function () {
@@ -1136,19 +1205,110 @@
     renderAll();
   });
 
+  // ---------- Export/Import modal ----------
+  // File downloads are unreliable on mobile browsers, so Export/Import both
+  // go through a visible textarea you can copy from or paste into, with the
+  // old file-based flow kept as a backup.
+
+  var modal = document.getElementById('dataModal');
+  var modalTitle = document.getElementById('modalTitle');
+  var modalInstructions = document.getElementById('modalInstructions');
+  var modalTextarea = document.getElementById('modalTextarea');
+  var modalHint = document.getElementById('modalHint');
+  var modalCopyBtn = document.getElementById('modalCopyBtn');
+  var modalLoadBtn = document.getElementById('modalLoadBtn');
+  var modalFilePickerBtn = document.getElementById('modalFilePickerBtn');
+
+  function closeModal() {
+    modal.classList.remove('open');
+    modalHint.textContent = '';
+  }
+  document.getElementById('modalCloseBtn').addEventListener('click', closeModal);
+  modal.addEventListener('click', function (e) {
+    if (e.target === modal) closeModal();
+  });
+
+  function applyImportedJson(text) {
+    var parsed = JSON.parse(text);
+    if (!parsed.teams || parsed.teams.length !== TEAM_COUNT) throw new Error('bad file');
+    if (!parsed.draftPicks) parsed.draftPicks = {};
+    state = parsed;
+    openLogIds = {};
+    save();
+    document.getElementById('leagueName').value = state.leagueName;
+    renderScoreGrid();
+    renderAll();
+  }
+
   document.getElementById('exportBtn').addEventListener('click', function () {
-    var blob = new Blob([JSON.stringify(state, null, 2)], { type: 'application/json' });
-    var url = URL.createObjectURL(blob);
-    var a = document.createElement('a');
-    a.href = url;
-    a.download = (state.leagueName || 'league').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-draft-order.json';
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    var jsonText = JSON.stringify(state, null, 2);
+
+    try {
+      var blob = new Blob([jsonText], { type: 'application/json' });
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement('a');
+      a.href = url;
+      a.download = (state.leagueName || 'league').replace(/[^a-z0-9]+/gi, '-').toLowerCase() + '-draft-order.json';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      // ignore — the modal is the reliable path
+    }
+
+    modalTitle.textContent = 'Export';
+    modalInstructions.textContent = 'Tap Copy to Clipboard, then paste this into Import on the other app/device. (A file download was also attempted, in case that works for you.)';
+    modalTextarea.value = jsonText;
+    modalTextarea.readOnly = true;
+    modalTextarea.focus();
+    modalTextarea.select();
+    modalCopyBtn.style.display = '';
+    modalLoadBtn.style.display = 'none';
+    modalFilePickerBtn.style.display = 'none';
+    modal.classList.add('open');
+  });
+
+  modalCopyBtn.addEventListener('click', function () {
+    modalTextarea.focus();
+    modalTextarea.select();
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      navigator.clipboard.writeText(modalTextarea.value).then(function () {
+        modalHint.textContent = 'Copied!';
+      }).catch(function () {
+        if (document.execCommand('copy')) modalHint.textContent = 'Copied!';
+        else modalHint.textContent = 'Couldn\'t copy automatically — select the text above and copy it manually.';
+      });
+    } else if (document.execCommand('copy')) {
+      modalHint.textContent = 'Copied!';
+    } else {
+      modalHint.textContent = 'Couldn\'t copy automatically — select the text above and copy it manually.';
+    }
   });
 
   document.getElementById('importBtn').addEventListener('click', function () {
+    modalTitle.textContent = 'Import';
+    modalInstructions.textContent = 'Paste exported data below, then tap Load This Data. Or choose a file if you have one.';
+    modalTextarea.value = '';
+    modalTextarea.readOnly = false;
+    modalTextarea.placeholder = 'Paste the exported JSON text here…';
+    modalTextarea.focus();
+    modalCopyBtn.style.display = 'none';
+    modalLoadBtn.style.display = '';
+    modalFilePickerBtn.style.display = '';
+    modal.classList.add('open');
+  });
+
+  modalLoadBtn.addEventListener('click', function () {
+    try {
+      applyImportedJson(modalTextarea.value);
+      closeModal();
+    } catch (err) {
+      modalHint.textContent = 'That doesn\'t look like valid exported data — check you copied the whole thing.';
+    }
+  });
+
+  modalFilePickerBtn.addEventListener('click', function () {
     document.getElementById('importFile').click();
   });
   document.getElementById('importFile').addEventListener('change', function (e) {
@@ -1157,15 +1317,8 @@
     var reader = new FileReader();
     reader.onload = function () {
       try {
-        var parsed = JSON.parse(reader.result);
-        if (!parsed.teams || parsed.teams.length !== TEAM_COUNT) throw new Error('bad file');
-        if (!parsed.draftPicks) parsed.draftPicks = {};
-        state = parsed;
-        openLogIds = {};
-        save();
-        document.getElementById('leagueName').value = state.leagueName;
-        renderScoreGrid();
-        renderAll();
+        applyImportedJson(reader.result);
+        closeModal();
       } catch (err) {
         alert('That file doesn\'t look like a valid export from this app.');
       }
