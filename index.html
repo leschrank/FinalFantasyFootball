@@ -984,6 +984,7 @@
   function renderTemplateSelect() {
     var sel = document.getElementById('templateSelect');
     if (!sel) return;
+    if (document.activeElement === sel) return; // don't rebuild while the user has it open
     var prevValue = sel.value;
     sel.innerHTML = '';
     sel.appendChild(el('option', { value: '', text: '— Choose one of your league\'s challenges —' }));
